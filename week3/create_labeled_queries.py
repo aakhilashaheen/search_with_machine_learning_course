@@ -4,9 +4,20 @@ import xml.etree.ElementTree as ET
 import pandas as pd
 import numpy as np
 import csv
+import re
 
 # Useful if you want to perform stemming.
 import nltk
+
+
+def get_parent_cat_with_min_counts(cat, categories_by_counts, parents_df):
+    if cat in categories_by_counts:
+        return cat
+    
+    parent_ctg = parents_df.loc[parents_df['category'] == cat, 'parent'].iloc[0]
+    get_parent_cat_with_min_counts(parent_ctg, categories_by_counts, parents_df)
+
+
 stemmer = nltk.stem.PorterStemmer()
 
 categories_file_name = r'/workspace/datasets/product_data/categories/categories_0001_abcat0010000_to_pcmcat99300050000.xml'
@@ -49,8 +60,38 @@ df = pd.read_csv(queries_file_name)[['category', 'query']]
 df = df[df['category'].isin(categories)]
 
 # IMPLEMENT ME: Convert queries to lowercase, and optionally implement other normalization, like stemming.
+alpha_patterns = re.compile('[^a-zA-Z0-9]')
+spaces_pattern = re.compile('\s+')
+categories_by_counts = {}
+for index, row in df.iterrows():
+    query = row['query']
+    normalized_query = re.sub(patterns, ' ', query)
+    normalized_query = re.sub(spaces_pattern, ' ', normalized_query)
+    stemmed_query = stemmer.stem(normalized_query)
+    df.at[index,'query'] = stemmed_query
+    category = row['category']
+    categories_by_counts[category] = categories_by_counts.get(category, 0) + 1
+   
+
 
 # IMPLEMENT ME: Roll up categories to ancestors to satisfy the minimum number of queries per category.
+is_rolled = True
+while is_rolled == True:
+    is_rolled = False
+    new_categories_by_counts = {}
+    for ctg, cnt in categories_by_counts.items():
+        new_ctg = ctg
+        if cnt < min_queries:
+            if ctg in parents_df['category'].unique():
+                parent_ctg = parents_df.loc[parents_df['category'] == ctg, 'parent'].iloc[0]
+                new_ctg = parent_ctg
+                is_rolled = True
+            else:
+                continue
+        new_categories_by_counts[new_ctg] = new_categories_by_counts.get(new_ctg, 0) + cnt
+    categories_by_counts = new_categories_by_counts
+    
+df['category']= df['category'].apply(lambda cat: get_parent_cat_with_min_counts(cat, categories_by_counts, parents_df))
 
 # Create labels in fastText format.
 df['label'] = '__label__' + df['category']
